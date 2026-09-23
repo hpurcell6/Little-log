@@ -679,7 +679,7 @@ function render(){
   const tl = document.getElementById('timeline');
   const sorted = data.entries
     .filter(e => (e.type==='feed' || e.type==='sleep' || e.type==='diaper') && isSameDay(e.start, logViewDate))
-    .sort((a,b)=> a.start - b.start);
+    .sort((a,b)=> b.start - a.start);
   if(sorted.length===0){
     tl.innerHTML = `<div class="empty">Nothing logged on this day.</div>`;
   } else {
@@ -1020,7 +1020,7 @@ function renderPumpTab(){
   document.getElementById('pumpDayNext').disabled = isSameDay(pumpViewDate.getTime(), new Date());
   const sorted = data.entries
     .filter(e=>e.type==='pump' && isSameDay(e.start, pumpViewDate))
-    .sort((a,b)=> a.start - b.start);
+    .sort((a,b)=> b.start - a.start);
   if(sorted.length===0){
     tl.innerHTML = `<div class="empty">Nothing logged on this day.</div>`;
   } else {
