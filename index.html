@@ -571,6 +571,18 @@ function classifySleep(startTs){
   const hr = new Date(startTs).getHours();
   return (hr >= 7 && hr < 20) ? 'nap' : 'night';
 }
+// Which calendar day a sleep entry should be grouped under for daily/weekly
+// totals. Naps use their own start date as-is. Night sleep starting before
+// 7am is folded back onto the previous day, since a 10pm–4am session and a
+// 12am–6am session both represent "last night" and should never land on
+// different days just because one happened to start after midnight.
+function sleepBucketDate(startTs){
+  const d = new Date(startTs);
+  if(classifySleep(startTs)==='night' && d.getHours() < 7){
+    d.setDate(d.getDate()-1);
+  }
+  return d;
+}
 // Splits one feed entry's ounces into breastmilk vs formula. Breastfed
 // entries have no tracked amount and contribute 0 to both.
 function feedOzSplit(e){
@@ -666,10 +678,11 @@ function render(){
     const s = feedOzSplit(e); acc.bm += s.bm; acc.formula += s.formula; return acc;
   }, {bm:0, formula:0});
   document.getElementById('stat-oz-breakdown').textContent = `BM ${(Math.round(feedSplitToday.bm*10)/10)}oz · Formula ${(Math.round(feedSplitToday.formula*10)/10)}oz`;
-  const sleepMs = today.filter(e=>e.type==='sleep' && e.end).reduce((s,e)=> s+(e.end-e.start), 0);
+  const todaySleep = data.entries.filter(e => e.type==='sleep' && e.end && isSameDay(sleepBucketDate(e.start).getTime()));
+  const sleepMs = todaySleep.reduce((s,e)=> s+(e.end-e.start), 0);
   document.getElementById('stat-sleep').textContent = (sleepMs/3600000).toFixed(1)+"h";
-  const napMs = today.filter(e=>e.type==='sleep' && e.end && classifySleep(e.start)==='nap').reduce((s,e)=> s+(e.end-e.start), 0);
-  const nightMs = today.filter(e=>e.type==='sleep' && e.end && classifySleep(e.start)==='night').reduce((s,e)=> s+(e.end-e.start), 0);
+  const napMs = todaySleep.filter(e=>classifySleep(e.start)==='nap').reduce((s,e)=> s+(e.end-e.start), 0);
+  const nightMs = todaySleep.filter(e=>classifySleep(e.start)==='night').reduce((s,e)=> s+(e.end-e.start), 0);
   document.getElementById('stat-sleep-breakdown').textContent = `Nap ${(napMs/3600000).toFixed(1)}h · Night ${(nightMs/3600000).toFixed(1)}h`;
   document.getElementById('stat-diapers').textContent = today.filter(e=>e.type==='diaper').length;
 
@@ -678,7 +691,11 @@ function render(){
 
   const tl = document.getElementById('timeline');
   const sorted = data.entries
-    .filter(e => (e.type==='feed' || e.type==='sleep' || e.type==='diaper') && isSameDay(e.start, logViewDate))
+    .filter(e => {
+      if(e.type!=='feed' && e.type!=='sleep' && e.type!=='diaper') return false;
+      const bucket = e.type==='sleep' ? sleepBucketDate(e.start).getTime() : e.start;
+      return isSameDay(bucket, logViewDate);
+    })
     .sort((a,b)=> b.start - a.start);
   if(sorted.length===0){
     tl.innerHTML = `<div class="empty">Nothing logged on this day.</div>`;
@@ -1269,11 +1286,11 @@ function renderTrends(){
     for(let i=6;i>=0;i--) days.push(new Date(now - i*86400000));
     bucketLabels = days.map(d => d.toLocaleDateString([], {weekday:'narrow'}));
     napHoursPerBucket = days.map(d => {
-      const ms = data.entries.filter(e=>e.type==='sleep' && e.end && isSameDay(e.start, d) && classifySleep(e.start)==='nap').reduce((s,e)=>s+(e.end-e.start),0);
+      const ms = data.entries.filter(e=>e.type==='sleep' && e.end && isSameDay(sleepBucketDate(e.start).getTime(), d) && classifySleep(e.start)==='nap').reduce((s,e)=>s+(e.end-e.start),0);
       return ms/3600000;
     });
     nightHoursPerBucket = days.map(d => {
-      const ms = data.entries.filter(e=>e.type==='sleep' && e.end && isSameDay(e.start, d) && classifySleep(e.start)==='night').reduce((s,e)=>s+(e.end-e.start),0);
+      const ms = data.entries.filter(e=>e.type==='sleep' && e.end && isSameDay(sleepBucketDate(e.start).getTime(), d) && classifySleep(e.start)==='night').reduce((s,e)=>s+(e.end-e.start),0);
       return ms/3600000;
     });
     document.getElementById('sleepBarsTitle').textContent = 'Sleep per day (last 7 days)';
@@ -1285,7 +1302,7 @@ function renderTrends(){
     for(let w=3; w>=0; w--){
       const weekEnd = now - w*7*86400000;
       const weekStart = weekEnd - 7*86400000;
-      const weekEntries = data.entries.filter(e=>e.type==='sleep' && e.end && e.start >= weekStart && e.start < weekEnd);
+      const weekEntries = data.entries.filter(e=>e.type==='sleep' && e.end && sleepBucketDate(e.start).getTime() >= weekStart && sleepBucketDate(e.start).getTime() < weekEnd);
       const napMs = weekEntries.filter(e=>classifySleep(e.start)==='nap').reduce((s,e)=>s+(e.end-e.start),0);
       const nightMs = weekEntries.filter(e=>classifySleep(e.start)==='night').reduce((s,e)=>s+(e.end-e.start),0);
       napHoursPerBucket.push((napMs/3600000)/7);
