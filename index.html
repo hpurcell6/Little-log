@@ -231,6 +231,11 @@
       <span>Timeline</span>
       <button id="addEntryBtn" style="background:var(--surface-2); border:none; color:var(--text); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:10px; cursor:pointer; font-family:'Lexend';">+ Add past entry</button>
     </div>
+    <div class="daynav" style="margin-bottom:10px;">
+      <button id="logDayPrev">‹</button>
+      <div class="dlabel" id="logDayLabel"></div>
+      <button id="logDayNext">›</button>
+    </div>
     <div class="timeline" id="timeline"></div>
   </div>
 
@@ -253,6 +258,11 @@
     <div class="section-title" style="display:flex; align-items:center; justify-content:space-between;">
       <span>Pump log</span>
       <button id="addPumpEntryBtn" style="background:var(--surface-2); border:none; color:var(--text); font-size:11.5px; font-weight:600; padding:6px 12px; border-radius:10px; cursor:pointer; font-family:'Lexend';">+ Add past pump</button>
+    </div>
+    <div class="daynav" style="margin-bottom:10px;">
+      <button id="pumpDayPrev">‹</button>
+      <div class="dlabel" id="pumpDayLabel"></div>
+      <button id="pumpDayNext">›</button>
     </div>
     <div class="timeline" id="pumpTimeline"></div>
   </div>
@@ -519,6 +529,11 @@ const dataRef = db.ref('little-log-data');
 let data = { entries: [], timers: { feed: null, sleep: null, pump: null }, blockOverrides: {}, diaperFlagOverrides: {} };
 let selectedDiaperType = null;
 let gridDate = new Date();
+let logViewDate = new Date();
+let pumpViewDate = new Date();
+function dayNavLabel(d){
+  return isSameDay(d.getTime(), new Date()) ? 'Today' : d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+}
 let activeBlockIdx = null;
 let pendingBlockCat = null;
 let pendingDiaperFlag = false;
@@ -658,10 +673,15 @@ function render(){
   document.getElementById('stat-sleep-breakdown').textContent = `Nap ${(napMs/3600000).toFixed(1)}h · Night ${(nightMs/3600000).toFixed(1)}h`;
   document.getElementById('stat-diapers').textContent = today.filter(e=>e.type==='diaper').length;
 
+  document.getElementById('logDayLabel').textContent = dayNavLabel(logViewDate);
+  document.getElementById('logDayNext').disabled = isSameDay(logViewDate.getTime(), new Date());
+
   const tl = document.getElementById('timeline');
-  const sorted = [...data.entries].sort((a,b)=> b.start - a.start).slice(0,30);
+  const sorted = data.entries
+    .filter(e => (e.type==='feed' || e.type==='sleep' || e.type==='diaper') && isSameDay(e.start, logViewDate))
+    .sort((a,b)=> a.start - b.start);
   if(sorted.length===0){
-    tl.innerHTML = `<div class="empty">Nothing logged yet — tap a button above to start.</div>`;
+    tl.innerHTML = `<div class="empty">Nothing logged on this day.</div>`;
   } else {
     tl.innerHTML = sorted.map(e => {
       let icon = e.type==='feed' ? '🍼' : e.type==='sleep' ? '🌙' : '💧';
@@ -996,9 +1016,13 @@ function renderPumpTab(){
   document.getElementById('stat-pump-avg').textContent = today.length ? (Math.round((ozToday/today.length)*10)/10) : '0';
 
   const tl = document.getElementById('pumpTimeline');
-  const sorted = [...data.entries].filter(e=>e.type==='pump').sort((a,b)=> b.start - a.start).slice(0,30);
+  document.getElementById('pumpDayLabel').textContent = dayNavLabel(pumpViewDate);
+  document.getElementById('pumpDayNext').disabled = isSameDay(pumpViewDate.getTime(), new Date());
+  const sorted = data.entries
+    .filter(e=>e.type==='pump' && isSameDay(e.start, pumpViewDate))
+    .sort((a,b)=> a.start - b.start);
   if(sorted.length===0){
-    tl.innerHTML = `<div class="empty">Nothing logged yet — tap the button above to log one.</div>`;
+    tl.innerHTML = `<div class="empty">Nothing logged on this day.</div>`;
   } else {
     tl.innerHTML = sorted.map(e=>{
       const total = (e.leftOz||0) + (e.rightOz||0);
@@ -1191,6 +1215,24 @@ document.getElementById('dayNext').addEventListener('click', ()=>{
   if(dateKey(new Date()) === dateKey(gridDate)) return;
   gridDate = new Date(gridDate.getTime() + 86400000);
   renderGrid();
+});
+document.getElementById('logDayPrev').addEventListener('click', ()=>{
+  logViewDate = new Date(logViewDate.getTime() - 86400000);
+  render();
+});
+document.getElementById('logDayNext').addEventListener('click', ()=>{
+  if(isSameDay(logViewDate.getTime(), new Date())) return;
+  logViewDate = new Date(logViewDate.getTime() + 86400000);
+  render();
+});
+document.getElementById('pumpDayPrev').addEventListener('click', ()=>{
+  pumpViewDate = new Date(pumpViewDate.getTime() - 86400000);
+  renderPumpTab();
+});
+document.getElementById('pumpDayNext').addEventListener('click', ()=>{
+  if(isSameDay(pumpViewDate.getTime(), new Date())) return;
+  pumpViewDate = new Date(pumpViewDate.getTime() + 86400000);
+  renderPumpTab();
 });
 
 /* ---------- TRENDS ---------- */
